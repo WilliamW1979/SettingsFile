@@ -1,10 +1,5 @@
-﻿using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
+﻿using System.Collections.Concurrent;
 using System.Globalization;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
 
 public interface IEncryptor
 {
@@ -35,8 +30,7 @@ public sealed class SettingsFile : IDisposable
         FileSemaphore.Wait();
         try
         {
-            if (Categories.TryGetValue(Category, out Dictionary<string, string>? dict) &&
-                dict.TryGetValue(Setting, out string? value))
+            if (Categories.TryGetValue(Category, out Dictionary<string, string>? dict) && dict.TryGetValue(Setting, out string? value))
                 return value;
             return DefaultValue;
         }
@@ -47,7 +41,6 @@ public sealed class SettingsFile : IDisposable
     {
         string value = Get(Category, Setting, "");
         if (string.IsNullOrEmpty(value)) return DefaultValue;
-
         try
         {
             Type type = typeof(T);
@@ -65,8 +58,7 @@ public sealed class SettingsFile : IDisposable
         FileSemaphore.Wait();
         try
         {
-            if (!Categories.TryGetValue(Category, out Dictionary<string, string>? dict) ||
-                !dict.TryGetValue(Setting, out raw!))
+            if (!Categories.TryGetValue(Category, out Dictionary<string, string>? dict) || !dict.TryGetValue(Setting, out raw!))
                 return false;
         }
         finally { FileSemaphore.Release(); }
@@ -89,11 +81,8 @@ public sealed class SettingsFile : IDisposable
     }
 
 
-    public void Set(string Category, string Setting, string Value) =>
-        WriteQueue.Enqueue((Category, Setting, Value, false, false));
-
-    public void Set<T>(string Category, string Setting, T Value) =>
-        Set(Category, Setting, Convert.ToString(Value, CultureInfo.InvariantCulture) ?? "");
+    public void Set(string Category, string Setting, string Value) => WriteQueue.Enqueue((Category, Setting, Value, false, false));
+    public void Set<T>(string Category, string Setting, T Value) => Set(Category, Setting, Convert.ToString(Value, CultureInfo.InvariantCulture) ?? "");
 
     public bool RemoveSetting(string Category, string Setting)
     {
@@ -154,7 +143,6 @@ public sealed class SettingsFile : IDisposable
         {
             Categories.Clear();
             if (!File.Exists(FilePath)) return;
-
             string content;
             try
             {
@@ -163,7 +151,6 @@ public sealed class SettingsFile : IDisposable
                     content = Encryptor.Decrypt(content);
             }
             catch { content = ""; }
-
             Parse(content);
         }
         finally { FileSemaphore.Release(); }
@@ -173,12 +160,10 @@ public sealed class SettingsFile : IDisposable
     {
         string category = "";
         string[] lines = Data.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
-
         foreach (string raw in lines)
         {
             string line = raw.Trim();
             if (string.IsNullOrWhiteSpace(line)) continue;
-
             if (line.StartsWith("[") && line.EndsWith("]"))
             {
                 category = line[1..^1].Trim();
@@ -186,16 +171,12 @@ public sealed class SettingsFile : IDisposable
                     Categories[category] = new Dictionary<string, string>();
                 continue;
             }
-
             int idx = line.IndexOf(':');
             if (idx < 1 || idx == line.Length - 1) continue;
-
             string key = line[..idx].Trim();
             string value = line[(idx + 1)..].Trim();
-
             if (!Categories.ContainsKey(category))
                 Categories[category] = new Dictionary<string, string>();
-
             Categories[category][key] = value;
         }
     }
@@ -203,10 +184,10 @@ public sealed class SettingsFile : IDisposable
     private string Serialize()
     {
         List<string> lines = new();
-        foreach (var cat in Categories)
+        foreach (KeyValuePair<string, Dictionary<string, string>> cat in Categories)
         {
             lines.Add($"[{cat.Key}]");
-            foreach (var kv in cat.Value)
+            foreach (KeyValuePair<string, string> kv in cat.Value)
                 lines.Add($"{kv.Key}: {kv.Value}");
             lines.Add("");
         }
@@ -218,21 +199,17 @@ public sealed class SettingsFile : IDisposable
         while (!Cts.IsCancellationRequested)
         {
             List<(string Category, string Setting, string Value, bool IsRemove, bool IsCategoryRemove)> batch = new();
-
             while (WriteQueue.TryDequeue(out var item))
                 batch.Add(item);
-
             if (batch.Count == 0)
             {
                 await Task.Delay(10);
                 continue;
             }
-
             await FileSemaphore.WaitAsync();
             try
             {
                 foreach (var item in batch)
-                {
                     if (item.IsCategoryRemove)
                         Categories.Remove(item.Category);
                     else if (item.IsRemove)
@@ -249,12 +226,9 @@ public sealed class SettingsFile : IDisposable
                         }
                         dict[item.Setting] = item.Value;
                     }
-                }
-
                 string content = Serialize();
                 if (Encryptor != null)
                     content = Encryptor.Encrypt(content);
-
                 await File.WriteAllTextAsync(FilePath, content);
             }
             catch { }
